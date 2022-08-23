@@ -72,21 +72,21 @@ def convert_chunk(filename,output,dlist,total,copy=False,pixel=False,chunk=10000
         
         if not copy: # drop some columns to compress
             for i in dlist:
-                c=c.drop(columns=i)
+                c=c.drop(columns=i,errors='ignore')
         if drop!=None: # drop channel
-            c=c.drop(c[(c['Channel']==drop)].index)
+            c=c.drop(c[(c['Channel']==drop)].index,errors='ignore')
                 
         if count==0:
             psize=c.at[0,'X (nm)']/c.at[0,'X (pix)'] # calculate the pixel size in nanometer
         c=c.rename(columns={'Channel':'channel','Frame':'frame','Photons':'intensity [photon]','Background':'background [photon]'})
         if not pixel: # diplay in nanometers
             c['sigma [nm]']=(c['PSF Sigma X (pix)']+c['PSF Sigma Y (pix)'])/2*psize # average sigmas along XY 
-            c=c.rename(columns={'X (nm)':'x [nm]','Y (nm)':'y [nm]','Z (nm)':'z [nm]','X precision (nm)':'x precision [nm]','Y precision (nm)':'y precision [nm]'})
-            c=c.drop(columns=['X (pix)','Y (pix)','Z (pix)','X precision (pix)','Y precision (pix)','PSF Sigma X (pix)','PSF Sigma Y (pix)'])
+            c=c.rename(columns={'X (nm)':'x [nm]','Y (nm)':'y [nm]','Z (nm)':'z [nm]','X precision (nm)':'x precision [nm]','Y precision (nm)':'y precision [nm]'},errors='ignore')
+            c=c.drop(columns=['X (pix)','Y (pix)','Z (pix)','X precision (pix)','Y precision (pix)','PSF Sigma X (pix)','PSF Sigma Y (pix)'],errors='ignore')
         else:
             c['sigma [px]']=(c['PSF Sigma X (pix)']+c['PSF Sigma Y (pix)'])/2 # average sigmas along XY
-            c=c.rename(columns={'X (pix)':'x [px]','Y (pix)':'y [px]','Z (pix)':'z [px]','X precision (pix)':'x precision [px]','Y precision (pix)':'y precision [px]','PSF Sigma X (pix)':'sigma x [px]','PSF Sigma Y (pix)':'sigma y [px]'})
-            c=c.drop(columns=['X (nm)','Y (nm)','Z (nm)','X precision (nm)','Y precision (nm)'])
+            c=c.rename(columns={'X (pix)':'x [px]','Y (pix)':'y [px]','Z (pix)':'z [px]','X precision (pix)':'x precision [px]','Y precision (pix)':'y precision [px]','PSF Sigma X (pix)':'sigma x [px]','PSF Sigma Y (pix)':'sigma y [px]'},errors='ignore')
+            c=c.drop(columns=['X (nm)','Y (nm)','Z (nm)','X precision (nm)','Y precision (nm)'],errors='ignore')
     
         if count==0: # direct write with header
             c.to_csv(output,index=False)
@@ -110,20 +110,20 @@ def convert_bulk(filename,output,dlist,copy=False,pixel=False,quiet=False,drop=N
         
     if not copy: # drop some columns to compress
         for i in dlist:
-            df=df.drop(columns=i)
+            df=df.drop(columns=i,errors='ignore')
     if drop!=None: # drop channel
-        df=df.drop(df[(df['Channel']==drop)].index)
+        df=df.drop(df[(df['Channel']==drop)].index,errors='ignore')
     
     psize=df.at[0,'X (nm)']/df.at[0,'X (pix)'] # calculate the pixel size in nanometer
     df=df.rename(columns={'Channel':'channel','Frame':'frame','Photons':'intensity [photon]','Background':'background [photon]'})
     if not pixel: # diplay in nanometers
         df['sigma [nm]']=(df['PSF Sigma X (pix)']+df['PSF Sigma Y (pix)'])/2*psize # average sigmas along XY 
-        df=df.rename(columns={'X (nm)':'x [nm]','Y (nm)':'y [nm]','Z (nm)':'z [nm]','X precision (nm)':'x precision [nm]','Y precision (nm)':'y precision [nm]'})
-        df=df.drop(columns=['X (pix)','Y (pix)','Z (pix)','X precision (pix)','Y precision (pix)','PSF Sigma X (pix)','PSF Sigma Y (pix)'])
+        df=df.rename(columns={'X (nm)':'x [nm]','Y (nm)':'y [nm]','Z (nm)':'z [nm]','X precision (nm)':'x precision [nm]','Y precision (nm)':'y precision [nm]'},errors='ignore')
+        df=df.drop(columns=['X (pix)','Y (pix)','Z (pix)','X precision (pix)','Y precision (pix)','PSF Sigma X (pix)','PSF Sigma Y (pix)'],errors='ignore')
     else:
         df['sigma [px]']=(df['PSF Sigma X (pix)']+df['PSF Sigma Y (pix)'])/2 # average sigmas along XY
-        df=df.rename(columns={'X (pix)':'x [px]','Y (pix)':'y [px]','Z (pix)':'z [px]','X precision (pix)':'x precision [px]','Y precision (pix)':'y precision [px]','PSF Sigma X (pix)':'sigma x [px]','PSF Sigma Y (pix)':'sigma y [px]'})
-        df=df.drop(columns=['X (nm)','Y (nm)','Z (nm)','X precision (nm)','Y precision (nm)'])
+        df=df.rename(columns={'X (pix)':'x [px]','Y (pix)':'y [px]','Z (pix)':'z [px]','X precision (pix)':'x precision [px]','Y precision (pix)':'y precision [px]','PSF Sigma X (pix)':'sigma x [px]','PSF Sigma Y (pix)':'sigma y [px]'},errors='ignore')
+        df=df.drop(columns=['X (nm)','Y (nm)','Z (nm)','X precision (nm)','Y precision (nm)'],errors='ignore')
     
     df.to_csv(output,index=False)
     
