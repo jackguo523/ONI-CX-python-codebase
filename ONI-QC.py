@@ -5,8 +5,12 @@ Created on Thu Jul 28 12:13:00 2022
 @author: JACK
 """
 
-# automate 
+# automate QC
 # should be run inside NimOS at this moment
+# run with command line
+# import sys
+# sys.argv=['C:/users/oni/desktop/ONI-QC.py','--user','test','--temperature','31']
+# exec(open('C:/users/oni/desktop/ONI-QC.py').read())
 
 # 3rd party libraries
 import time
@@ -16,7 +20,6 @@ import os
 import numpy as np
 import skimage.io
 import argparse
-
 
 # global NimOS variables
 global data_manager
@@ -28,9 +31,10 @@ end_time=0
 
 
 # local user variables
-temperature_wait_time=3600 # temperature waiting time, default to 60min
+temperature_wait_time=3600 # wait time for temperature control, default to 3600
+flag_temperature=True
 flag_transillumination=False # flag for saving transillumination
-channel_split=640 # system split
+channel_split=640 # channel split, either 560 or 640
 flag_sample_on=True # flag if sample is on
 stage_tolerance=0.05 # translation tolerance in mm
 flag_find_laser_power=True # flag for finding optimal laser power for channel mapping
@@ -43,6 +47,8 @@ flag_memory_leaking=False # flag for checking memery usage using psutil
 runtime=[]
 result=True
 pm_qc=['TBD']*17
+iq_qc=['TBD']*14
+oq_qc=['TBD']*9
 date=str(datetime.date.today()).replace('-','')
 outfile='C:/Users/ONI/Desktop/'+date+'_QC_report.txt'
 report=open(outfile,'w')
@@ -77,9 +83,9 @@ def find_laser_power(laser=1,photon=500):
     percentage=0
     light[laser].PercentPower=percentage
     light[laser].Enabled=True
-    if laser==3: # for red laser
+    if laser==2 or laser==3: # for green and red laser
         mean_photon=np.average(camera.GetLatestImage().Channel(1).Pixels)
-    else: # for UV, blue, and green laser
+    else: # for UV and blue laser
         mean_photon=np.average(camera.GetLatestImage().Channel(0).Pixels)
     while mean_photon <= photon:
         percentage=percentage+0.5 # increment
@@ -233,7 +239,7 @@ def pm_qc50(tar=31,wait=True):
     #     report.write('qc50: passed to control temperature, the difference is '+str(diff))
     #     return True
     report.write('\nparameter: target temperature = '+str(tar)+'C')
-    if flag_temperature:
+    if wait:
         report.write('\n           temperature waiting time = '+str(temperature_wait_time)+'s')
     else:
         report.write('\nhint: please manually check the temperature reading after an hour')
@@ -704,7 +710,7 @@ def pm_qc140(l=45,u=57,s=0.5,p=30):
     if ta > 56 or ta < 50:
         tp=False
         report.write('\nhint: [bad] TIRF = '+str(ta))
-    elif ta < 53.5 and ta > 51.5:
+    elif ta <= 53.5 and ta >= 51.5:
         tp=True
         report.write('\nhint: [perfect] TIRF = '+str(ta))
     else:
@@ -775,6 +781,8 @@ def pm_qc160(ex=10,frame=10000,t=80):
 def pm_qc170(t=30,uv=15,blue=200,green=200,red=140,save=False):
     light.GlobalOnState=True
     light[0].Enabled=True # UV
+    light[0].PercentPower=50
+    time.sleep(1)
     light[0].PercentPower=100
     if t!=-1:
         time.sleep(t) # wait for 30s
@@ -792,7 +800,10 @@ def pm_qc170(t=30,uv=15,blue=200,green=200,red=140,save=False):
     light[0].PercentPower=0
     light[0].Enabled=False
     
+    time.sleep(2)
     light[1].Enabled=True # blue
+    light[1].PercentPower=50
+    time.sleep(1)
     light[1].PercentPower=100
     if t!=-1:
         time.sleep(t) # wait for 30s
@@ -809,7 +820,10 @@ def pm_qc170(t=30,uv=15,blue=200,green=200,red=140,save=False):
     light[1].PercentPower=0
     light[1].Enabled=False
     
+    time.sleep(2)
     light[2].Enabled=True # green
+    light[2].PercentPower=50
+    time.sleep(1)
     light[2].PercentPower=100
     if t!=-1:
         time.sleep(t) # wait for 30s
@@ -826,7 +840,10 @@ def pm_qc170(t=30,uv=15,blue=200,green=200,red=140,save=False):
     light[2].PercentPower=0
     light[2].Enabled=False
     
+    time.sleep(2)
     light[3].Enabled=True # red
+    light[3].PercentPower=50
+    time.sleep(1)
     light[3].PercentPower=100
     if t!=-1:
         time.sleep(t) # wait for 30s
@@ -852,7 +869,7 @@ def pm_qc170(t=30,uv=15,blue=200,green=200,red=140,save=False):
         up=False
     else:
         up=True
-    report.write('\nhint: (actual )UV laser power = '+str(u)+'mW')
+    report.write('\nhint: (actual) UV laser power = '+str(u)+'mW')
     if b < blue:
         bp=False
     else:
@@ -881,16 +898,242 @@ def pm_qc170(t=30,uv=15,blue=200,green=200,red=140,save=False):
     return up,bp,gp,rp
 
 
+# check lasers
+def iq_qc9(sp=640,p=50,ex=30):
+    camera.BeginView()
+    camera.SetTargetExposureMilliseconds(ex)
+    light.GlobalOnState=True
+    
+    time.sleep(1)
+    uv1=np.average(read_camera(0)) # before
+    light[0].PercentPower=p
+    light[0].Enabled=True
+    time.sleep(1)
+    uv2=np.average(read_camera(0)) # after
+    light[0].PercentPower=0
+    light[0].Enabled=False
+    
+    time.sleep(1)
+    blue1=np.average(read_camera(0))
+    light[1].PercentPower=p
+    light[1].Enabled=True
+    time.sleep(1)
+    blue2=np.average(read_camera(0))
+    light[1].PercentPower=0
+    light[1].Enabled=False
+    
+    time.sleep(1)
+    if sp==640: # for 640-split
+        green1=np.average(read_camera(0))
+    else: # for 560-split
+        green1=np.average(read_camera(1))
+    light[2].PercentPower=p
+    light[2].Enabled=True
+    time.sleep(1)
+    if sp==640: # for 640-split
+        green2=np.average(read_camera(0))
+    else: # for 560-split
+        green2=np.average(read_camera(1))
+    light[2].PercentPower=0
+    light[2].Enabled=False
+    
+    time.sleep(1)
+    red1=np.average(read_camera(1))
+    light[3].PercentPower=p
+    light[3].Enabled=True
+    time.sleep(1)
+    red2=np.average(read_camera(1))
+    light[3].PercentPower=0
+    light[3].Enabled=False
+    
+    report.write('\nparameter: laser power = '+str(p)+'%')
+    report.write('\n           exposure time = '+str(ex)+'ms')
+    if uv2<=uv1:
+        up=False
+    else:
+        up=True
+    if blue2<=blue1:
+        bp=False
+    else:
+        bp=True
+    if green2<=green1:
+        gp=False
+    else:
+        gp=True
+    if red2<=red1:
+        rp=False
+    else:
+        rp=True
+    
+    return up,bp,gp,rp
+
+# check focus laser and camera
+def iq_qc10():
+    focus=instrument.FocusCameraControl
+    raw=focus.GetLatestImage()
+    im=nim_image_to_array(raw)
+    skimage.io.imsave(abspath+'/focus-pattern.tif',im,check_contrast=False)
+    print('focus pattern saved as focus-pattern.tif')
+    report.write('\nhint: focus pattern saved as focus-pattern.tif')
+    
+# check heaters
+def iq_qc14(tar=31,wait=10):
+    temperature.TargetTemperatureC=tar # set target temperature
+    temp1=temperature.CurrentTemperatureC # read temperature increase before turning on the control
+    time.sleep(wait)
+    temp2=temperature.CurrentTemperatureC
+    diff1=math.fabs(temp2-temp1)
+    
+    temperature.ControlEnabled=True # enable temperature control
+    time.sleep(1)
+    temp1=temperature.CurrentTemperatureC # read temperature increase after turning on the control
+    time.sleep(wait)
+    temp2=temperature.CurrentTemperatureC
+    diff2=math.fabs(temp2-temp1)
+    
+    report.write('\nparameter: target temperature = '+str(tar)+'C')
+    if diff2>diff1:
+        return True
+    else:
+        return False
+
+
+# check z-lock stability
+def oq_qc6(row=10,col=10,p=30,save=False):
+    camera.BeginView()
+    focus=instrument.FocusCameraControl
+    light[1].Enabled=True
+    light[1].PercentPower=p
+    xpos=stage.GetPositionInMicrons(stage.Axis.X)
+    ypos=stage.GetPositionInMicrons(stage.Axis.Y)
+    if autofocus.CurrentStatus is not autofocus.Status.FOCUSING_CONTINUOUS:
+        autofocus.StartContinuousAutoFocus()
+        time.sleep(5) # wait
+    
+    report.write('\nparameter: overview scan row = '+str(row))
+    report.write('\n           overview scan col = '+str(col))
+    report.write('\n           blue laser power = '+str(p)+'%')
+ 
+    zp=True
+    zp=_snake(row,col,save)
+    
+    light[1].PercentPower=0
+    light[1].Enabled=False
+    stage.RequestMoveAbsolute(stage.Axis.X,xpos)
+    stage.RequestMoveAbsolute(stage.Axis.Y,ypos)
+    while stage.IsMoving(stage.Axis.X) or stage.IsMoving(stage.Axis.Y):
+        time.sleep(0.01)
+    
+    return zp
+    
+# check dSTORM resolution
+def oq_qc7(p=30,s=0.02,position=5,frame=1):
+    light.GlobalOnState=False
+    light[1].PercentPower=p
+    light[1].Enabled=True
+    
+    XP=[]
+    YP=[]
+    xpos=stage.GetPositionInMicrons(stage.Axis.X)
+    ypos=stage.GetPositionInMicrons(stage.Axis.Y)
+    for i in range(position):
+        XP.append(xpos+i*s)
+        YP.append(ypos+i*s)
+    numI=position*frame # get total number of frames
+    
+    light.GlobalOnState=True
+    acquisition.InitAcquisition(outpath,'dSTORM_x_resolution',numI)
+    for i in range(position): # move along x
+        stage.RequestMoveAbsolute(stage.Axis.X,XP[i])
+        while stage.IsMoving(stage.Axis.X) or stage.IsMoving(stage.Axis.Y):
+            time.sleep(0.01)
+        time.sleep(1) # wait for focus
+        light[1].Enabled=True
+        acquisition.ContinueFor(frame)
+        while acquisition.IsActiveOrCompleting:
+            time.sleep(0.1)
+    while data_manager.IsBusy:
+        time.sleep(0.1)
+        
+    acquisition.InitAcquisition(outpath,'dSTORM_y_resolution',numI)
+    for i in range(position): # move along x
+        stage.RequestMoveAbsolute(stage.Axis.Y,YP[i])
+        while stage.IsMoving(stage.Axis.X) or stage.IsMoving(stage.Axis.Y):
+            time.sleep(0.01)
+        time.sleep(1) # wait for focus
+        light[1].Enabled=True
+        acquisition.ContinueFor(frame)
+        while acquisition.IsActiveOrCompleting:
+            time.sleep(0.1)
+    while data_manager.IsBusy:
+        time.sleep(0.1)
+        
+    print('dSTORM resolution test images saved as dSTORM_x_resolution.tif and dSTORM_y_resolution.tif')
+    report.write('\nparameter: position count = '+str(position))
+    report.write('\n           step size = '+str(s)+'um')
+    report.write('\n           frame per position = '+str(frame))
+    report.write('\n           blue laser power = '+str(p)+'%')
+    report.write('\nhint: dSTORM resolution test images saved as dSTORM_x_resolution.tif and dSTORM_y_resolution.tif')
+    report.write('\n      please measure the resolution using Line Histogram')
+    
+# check temperature stability
+def oq_qc8(tar=31,wait=True,t=3600):
+    temperature_timer=time.time()
+    temperature.TargetTemperatureC=tar # set target temperature
+    temperature.ControlEnabled=True # enable temperature control
+    report.write('\nparameter: target temperature = '+str(tar)+'C')
+    tp=True
+    
+    if wait:
+        while (time.time()-temperature_timer) < t: # wait
+            time.sleep(0.01)
+        current_temperature=temperature.CurrentTemperatureC # read current temperature
+        diff=math.fabs(current_temperature-target_temperature)
+        report.write('\nhint: measured temperature = '+str(current_temperature)+'C')
+        report.write('\n      temperature difference = '+str(diff)+'C')
+        if diff > 0.2:
+            tp=False
+        else:
+            tp=True
+    else:
+        report.write('\nhint: please manually check the temperature reading after an hour')
+        
+    return tp
+    
+
+# check drift
+def oq_qc9(ex=1000,frame=1800):
+    camera.BeginView()
+    light.GlobalOnState=True
+    
+    p=find_laser_power(1,500)
+    camera.SetTargetExposureMilliseconds(ex)
+    light[1].PercentPower=p
+    light[1].Enabled=True
+    
+    acquisition.Start(outpath,'drift',frame)
+    _wait()
+    
+    print('drift test images saved as drift.tif')
+    report.write('\nparameter: frame count = '+str(frame))
+    report.write('\n           exposure time = '+str(ex)+'ms')
+    report.write('\n           blue laser power = '+str(p)+'%')
+    report.write('\nhint: drift test images saved as drift.tif')
+    report.write('\n      please measure the drift using Trace')
+    
+    camera.SetTargetExposureMilliseconds(30) # reset exposure
+    
+
 
 def pm_main():   
-    # PM link: https://docs.google.com/document/d/16Kt_r53kOqY2PMRJG4U3P0g0yC6TMqmf/edit#heading=h.gjdgxs
+    # PM link: https://docs.google.com/document/d/1QUPikXWMRo2aWuIj_lkVVmJTgcxXP05MLVWvsPAwb44/edit
     # start PM and write header
     report.write('*******SEMI-AUTOMATED PM*******')
     report.write('\nauthor: Jack') # author acknowledgement
     report.write('\ntester: '+str(user)) # tester
     report.write('\ndate: '+str(datetime.datetime.now())) # current time
-    report.write('\nserial number: '+str(instrument.GetAvailableInstruments()[0]))
-    report.write('\noutput folder: '+outpath)
+    report.write('\nNanoimager serial number: '+str(instrument.GetAvailableInstruments()[0]))
+    report.write('\noutput folder: '+abspath)
     _init()
     
     global result
@@ -914,7 +1157,7 @@ def pm_main():
         pm_qc[1]='Fail'
         report.close()
         result=False
-        exit()
+        raise ValueError('NimOS connection failed')
     else:
         report.write('\noutput: passed to connect to instrument from NimOS')
         pm_qc[1]='Pass'
@@ -982,6 +1225,7 @@ def pm_main():
         pm_qc[6]='Pass'
     else:
         pm_qc[6]='Fail'
+        result=False
     timer_end()    
     
     # check z stage movement
@@ -1116,21 +1360,18 @@ def pm_main():
     up,bp,gp,rp=pm_qc170(30,15,200,200,140,flag_laser_screenshot)
     if not up:
         report.write('\noutput: failed to achieve standard UV laser power')
-        result=False
     if not bp:
         report.write('\noutput: failed to achieve standard blue laser power')
-        result=False
     if not gp:
         report.write('\noutput: failed to achieve standard green laser power')
-        result=False
     if not rp:
         report.write('\noutput: failed to achieve standard red laser power')
-        result=False
     if up and bp and gp and rp:
         report.write('\noutput: passed to achieve standard laser powers')
         pm_qc[16]='Pass'
     else:
         pm_qc[16]='Fail'
+        result=False
     timer_end()
     
     # check temperature control
@@ -1150,70 +1391,71 @@ def pm_main():
             report.write('\noutput: passed to achieve correct temperature control')
             pm_qc[4]='Pass'
 
+
 def pm_analysis():
     report.write('\n\n*******PM FINISHED*******')
     report.write('\nOutcome = '+str(result))
     report.write('\nTotal Runtime = '+str(sum(runtime))+'s')
     report.write('\nSummary:')
-    report.write('\n         qc10: tbd, please manually check the overall condition of the Nanoimager')
-    report.write('\n         qc20: ')
+    report.write('\n         pm10: tbd, please manually check the overall condition of the Nanoimager')
+    report.write('\n         pm20: ')
     if pm_qc[1]=='Fail':
         report.write('*fail, please manually check the NimOS connection')
     else:
         report.write('pass')
-    report.write('\n         qc30: tbd, please manually check the interlock')
-    report.write('\n         qc40: tbd, please manually check the sample stage')
-    report.write('\n         qc50: ')
+    report.write('\n         pm30: tbd, please manually check the interlock')
+    report.write('\n         pm40: tbd, please manually check the sample stage')
+    report.write('\n         pm50: ')
     if pm_qc[4]=='Fail':
         report.write('*fail, please manually check the temperature curves and rerun the thermistor calibration')
     else:
         report.write('pass')
-    report.write('\n         qc60: ')
+    report.write('\n         pm60: ')
     if pm_qc[5]=='Fail':
         report.write('*fail, please manually check the LEDs and their connections on the enclosure')
     else:
         report.write('pass')
-    report.write('\n         qc70: ')
+    report.write('\n         pm70: ')
     if pm_qc[6]=='Fail':
         report.write('*fail, please manually check the XY stage translation and the stage settings in the IDF')
     else:
         report.write('pass')
-    report.write('\n         qc80: ')
+    report.write('\n         pm80: ')
     if pm_qc[7]=='Fail':
         report.write('*fail, please manually check the Z stage translation and the stage settings in the IDF')
     else:
         report.write('pass')
-    report.write('\n         qc90: ')
+    report.write('\n         pm90: ')
     if pm_qc[8]=='Fail':
         report.write('*fail, please rerun the camera calibration')
     else:
         report.write('pass')
-    report.write('\n         qc100: ')
+    report.write('\n         pm100: ')
     if pm_qc[9]=='Fail':
         report.write('*fail, please manually check the stage tilting and adjust the stage screws if needed')
     else:
         report.write('pass')
-    report.write('\n         qc110: ')
+    report.write('\n         pm110: ')
     if pm_qc[10]=='Fail':
         report.write('*fail, please manually check the z-lock preferably with another bead slide')
     else:
         report.write('pass')
-    report.write('\n         qc120: ')
+    report.write('\n         pm120: ')
     if pm_qc[11]=='Fail':
         report.write('*fail, please manually rerun the channel mapping calibration preferably with another bead slide')
     else:
         report.write('pass')
-    report.write('\n         qc130: tbd, please manually check the acquired PSF images (in total 4 images)')
-    report.write('\n         qc140: ')
+    report.write('\n         pm130: tbd, please manually check the acquired PSF images (in total 4 images)')
+    report.write('\n         pm140: ')
     if pm_qc[13]=='Fail':
         report.write('*fail, please manually check the TIRF angle preferably with another bead slide')
     else:
         report.write('pass')
-    report.write('\n         qc150: tbd, please manually check the acquired light program images (in total 24 frames)')
-    report.write('\n         qc160: tbd, please manually check the memory usage of NimOS from Windows task manager')
-    report.write('\n         qc170: ')
+    report.write('\n         pm150: tbd, please manually check the acquired light program images (in total 24 frames)')
+    report.write('\n         pm160: tbd, please manually check the memory usage of NimOS from Windows task manager')
+    report.write('\n         pm170: ')
     if pm_qc[16]=='Fail':
-        report.write('*fail, please manually re-check the lasers')
+        report.write('*fail, please manually check the lasers')
     else:
         report.write('pass')
         
@@ -1222,7 +1464,404 @@ def pm_analysis():
     
         
 def iqoq_main():
-    a=1
+    # IQOQ link: https://docs.google.com/document/d/18npW30-YrSQVr9bbIrUd43Zee0NOaT3EUd-WXFPS20o/edit
+    # start PM and write header
+    report.write('*******SEMI-AUTOMATED IQOQ*******')
+    report.write('\nauthor: Jack') # author acknowledgement
+    report.write('\ntester: '+str(user)) # tester
+    report.write('\ndate: '+str(datetime.datetime.now())) # current time
+    report.write('\nNanoimager serial number: '+str(instrument.GetAvailableInstruments()[0]))
+    # read basic information
+    report.write('\nlaptop serial number: '+os.popen('wmic bios get serialnumber').read().replace('\n','').replace('	','').replace(' ','').replace('SerialNumber',''))
+    
+    (_,_,files)=next(os.walk('C:/ProgramData/OxfordNi_Nim'))
+    file=[i for i in files if 'instrumentdata' in i.lower()]
+    idf=open('C:/ProgramData\OxfordNi_Nim/'+file[0],'r')
+    idf=idf.read()
+    subidf=idf[idf.find('channels'):idf.rfind('"emulateHard')]
+    import re
+    wavelengths=re.findall('\d+\.\d+',subidf) # read the wavelengths
+    report.write('\nlaser lines: C0['+wavelengths[0]+', '+wavelengths[1]+'], C1['+wavelengths[2]+', '+wavelengths[3]+']')
+    report.write('\nlaser split: '+str(channel_split)+'-split')
+    report.write('\noutput folder: '+abspath)
+    _init()
+    
+    global result
+    
+    # process IQ
+    # check room temperature
+    timer_start()
+    print('iq_qc1: check room temperature')
+    report.write('\n\niq_qc1: check room temperature')
+    report.write('\nhint: please check the room temperature - should be less than 40 degrees')
+    iq_qc[0]='TBD'
+    timer_end()
+    
+    # check microscope
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc2: check room temperature')
+    report.write('\n\niq_qc2: check room temperature')
+    report.write('\nhint: please check the physical condition of the Nanoimager')
+    iq_qc[1]='TBD'
+    timer_end()
+    
+    # check sample holder and objective
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc3: check sample holder')
+    report.write('\n\niq_qc3: check sample holder and objective')
+    report.write('\nhint: please check the sample holder and objective')
+    iq_qc[2]='TBD'
+    timer_end()
+    
+    # check Acquire tab
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc4: check Acquire tab')
+    report.write('\n\niq_qc4: check Acquire tab')
+    report.write('\nhint: please check the Acquire tab in NimOS')
+    iq_qc[3]='TBD'
+    timer_end()
+    
+    # check NimOS connection
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc5: check NimOS connection')
+    report.write('\n\niq_qc5: check NimOS connection')
+    if not pm_qc20(): # iq_qc5 is the same as pm_qc20
+        report.write('\noutput: failed to connect to instrument from NimOS')
+        iq_qc[4]='Fail'
+        report.close()
+        result=False
+        raise ValueError('NimOS connection failed')
+    else:
+        report.write('\noutput: passed to connect to instrument from NimOS')
+        iq_qc[4]='Pass'
+    timer_end()
+    
+    # check NimOS version
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc6: check NimOS version')
+    report.write('\n\niq_qc6: check NimOS version')
+    report.write('\nhint: please check the NimOS version from Help>About')
+    iq_qc[5]='TBD'
+    timer_end()
+    
+    # check interlock part 1
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc7: check interlock (part 1)')
+    report.write('\n\niq_qc7: check interlock (part 1)')
+    report.write('\nhint: please check the interlock (part 1)')
+    iq_qc[6]='TBD'
+    timer_end()
+    
+    # check interlock part 2
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc8: check interlock (part 2)')
+    report.write('\n\niq_qc8: check interlock (part 2)')
+    report.write('\nhint: please check the interlock (part 2)')
+    iq_qc[7]='TBD'
+    timer_end()
+    
+    # check lasers
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc9: check laser power')
+    report.write('\n\niq_qc9: check laser power')
+    up,bp,gp,rp=iq_qc9(channel_split,50,30)
+    if not up:
+        report.write('\noutput: failed to switch on UV laser at 50%')
+    if not bp:
+        report.write('\noutput: failed to switch on blue laser at 50%')
+    if not gp:
+        report.write('\noutput: failed to switch on green laser at 50%')
+    if not rp:
+        report.write('\noutput: failed to switch on red laser at 50%')
+    if up and bp and gp and rp:
+        report.write('\noutput: passed to achieve standard laser powers')
+        iq_qc[8]='Pass'
+    else:
+        iq_qc[8]='Fail'
+        result=False
+    timer_end()
+    
+    # check focus laser and camera
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc10: check focus laser and camera')
+    report.write('\n\niq_qc10: check focus laser and camera')
+    iq_qc10()
+    iq_qc[9]='TBD'
+    timer_end()
+    
+    # check transillumination
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc11: check transillumination')
+    report.write('\n\niq_qc11: check transillumination')
+    if flag_transillumination:
+        print('transillumination images saved as LED-***-***.tif')
+        report.write('\nhint: transillumination images saved as LED-***-***.tif')
+    if not pm_qc60(channel_split,100,flag_transillumination): # iq_qc11 is the same as pm_qc60
+        report.write('\noutput: failed to provide correct transillumination')
+        iq_qc[10]='Fail'
+        result=False
+    else:
+        report.write('\noutput: passed to provide correcct transillumination')
+        iq_qc[10]='Pass'
+    timer_end()
+    
+    # check 3d lens
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc12: check 3d lens')
+    report.write('\n\niq_qc12: check 3d lens')
+    pm_qc130(1,30) # iq_qc12 is the same as pm_qc130
+    iq_qc[11]='TBD'
+    timer_end()
+    
+    # check light program
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc13: check light program')
+    report.write('\n\niq_qc13: check light program')
+    pm_qc150(100) # iq_qc13 is the same as pm_qc150
+    iq_qc[12]='TBD'
+    timer_end()
+    
+    # check heaters
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('iq_qc14: check heaters')
+    report.write('\n\niq_qc14: check heaters')
+    if not iq_qc14(target_temperature,10):
+        report.write('\noutput: failed to provide correct heating')
+        iq_qc[13]='Fail'
+        result=False
+    else:
+        report.write('\noutput: passed to provide correct heating')
+        iq_qc[13]='Pass'
+    timer_end()
+    
+    # process OQ
+    # check laser power
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc1: check laser power')
+    report.write('\n\noq_qc1: check laser power')
+    up,bp,gp,rp=pm_qc170(30,15,200,200,140,flag_laser_screenshot) # oq_qc1 is the same as pm_qc170
+    if not up:
+        report.write('\noutput: failed to achieve standard UV laser power')
+    if not bp:
+        report.write('\noutput: failed to achieve standard blue laser power')
+    if not gp:
+        report.write('\noutput: failed to achieve standard green laser power')
+    if not rp:
+        report.write('\noutput: failed to achieve standard red laser power')
+    if up and bp and gp and rp:
+        report.write('\noutput: passed to achieve standard laser powers')
+        oq_qc[0]='Pass'
+    else:
+        oq_qc[0]='Fail'
+        result=False
+    timer_end()
+    
+    # check stage translation
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc2: check xyz stage movement')
+    report.write('\n\noq_qc2: check xyz stage movement')
+    xp,yp=pm_qc70(stage_tolerance,flag_sample_on) # oq_qc2 is the combination of pm_qc70 and pm_qc80
+    if not xp:
+        report.write('\noutput: failed to achieve correct x stage movement')
+    else:
+        report.write('\noutput: passed to achieve correct x stage movement')
+    if not yp:
+        report.write('\noutput: failed to achieve correct y stage movement')
+    else:
+        report.write('\noutput: passed to achieve correct y stage movement')
+    zp=pm_qc80(stage_tolerance,flag_sample_on)
+    if not zp:
+        report.write('\noutput: failed to achieve correct z stage movement')
+    else:
+        report.write('\noutput: passed to achieve correct z stage movement')
+    if xp and yp and zp:
+        oq_qc[1]='Pass'
+    else:
+        oq_qc[1]='Fail'
+        result=False
+    timer_end()    
+    
+    # check camera calibration
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc3: check camera calibration')
+    report.write('\n\noq_qc3: check camera calibration')
+    if not pm_qc90(100,1000): # oq_qc3 is the same as pm_qc90
+        report.write('\noutput: failed to achieve correct camera calibration')
+        oq_qc[2]='Fail'
+        result=False
+    else:
+        report.write('\noutput: passed to achieve correct camera calibration')
+        oq_qc[2]='Pass'
+    timer_end()
+    
+    # check channel mapping
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc4: check channel mapping calibration')
+    report.write('\n\noq_qc4: check channel mapping calibration')
+    if not pm_qc120(5,20,2000,5.0,10.0,flag_find_laser_power): # oq_qc4 is the same as pm_qc120
+        report.write('\noutput: failed to achieve correct channel mapping calibration')
+        oq_qc[3]='Fail'
+        result=False
+    else:
+        report.write('\noutput: passed to achieve correct channel mapping calibration')
+        oq_qc[3]='Pass'
+    timer_end()
+    
+    # check TIRF
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc5: check TIRF')
+    report.write('\n\noq_qc5: check TIRF')
+    if not pm_qc140(45,57,0.5,30): # oq_qc5 is the same as pm_qc140
+        report.write('\noutput: failed to achieve correct TIRF angle')
+        oq_qc[4]='Fail'
+        result=False
+    else:
+        report.write('\noutput: passed to achieve correct TIRF angle')
+        oq_qc[4]='Pass'
+    timer_end()
+    
+    # check Z-lock stability
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc6: check z-lock')
+    report.write('\n\noq_qc6: check z-lock')
+    if not oq_qc6(10,10,30,flag_overview):
+        report.write('\noutput: failed to achieve correct z-lock')
+        oq_qc[5]='Fail'
+        result=False
+    else:
+        report.write('\noutput: passed to achieve correct z-lock')
+        oq_qc[5]='Pass'
+    timer_end()
+    
+    # check dSTORM resolution
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc7: check dSTORM resolution')
+    report.write('\n\noq_qc7: check dSTORM resolution')
+    oq_qc7(30,0.02,5,1)
+    oq_qc[6]='TBD'
+    timer_end()
+    
+    # check temperature stability
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc8: check temperature stability')
+    report.write('\n\noq_qc8: check temperature stability')
+    if not oq_qc8(target_temperature,flag_temperature,temperature_wait_time):
+        report.write('\noutput: failed to achieve correct temperature control')
+        oq_qc[7]='Fail'
+        result=False
+    else:
+        report.write('\noutput: passed to achieve correct temperature control')
+        oq_qc[7]='Pass'
+    timer_end()
+    
+    # check drift
+    time.sleep(1) # hold for 1s between checkpoints
+    timer_start()
+    print('oq_qc9: check drift')
+    report.write('\n\noq_qc9: check drift')
+    oq_qc9(1000,1800)
+    oq_qc[6]='TBD'
+    timer_end()
+
+    
+def iqoq_analysis():
+    report.write('\n\n*******IQOQ FINISHED*******')
+    report.write('\nOutcome = '+str(result))
+    report.write('\nTotal Runtime = '+str(sum(runtime))+'s')
+    report.write('\nIQ Summary:')
+    report.write('\n         iq1: tbd, please manually check the room temperature')
+    report.write('\n         iq2: tbd, please manually check the overall condition of the Nanoimager')
+    report.write('\n         iq3: tbd, please manually check the sample holder and objective')
+    report.write('\n         iq4: tbd, please manually check the Acquire tab in NimOS')
+    report.write('\n         iq5: ')
+    if iq_qc[4]=='Fail':
+        report.write('*fail, please manually check the NimOS connection')
+    else:
+        report.write('pass')
+    report.write('\n         iq6: tbd, please manually check the NimOS version from Help>About')
+    report.write('\n         iq7: tbd, please manually check the interlock (part 1)')
+    report.write('\n         iq8: tbd, please manually check the interlock (part 2)')
+    report.write('\n         iq9: ')
+    if iq_qc[8]=='Fail':
+        report.write('*fail, please manually check the lasers at 50%')
+    else:
+        report.write('pass')
+    report.write('\n         iq10: tbd, please manually check the focus pattern')
+    report.write('\n         iq11: ')
+    if iq_qc[10]=='Fail':
+        report.write('*fail, please manually check the LEDs and their connections on the enclosure')
+    else:
+        report.write('pass')
+    report.write('\n         iq12: tbd, please manually check the acquired PSF images (in total 4 images)')
+    report.write('\n         iq13: tbd, please manually check the acquired light program images (in total 24 frames)')
+    report.write('\n         iq14: ')
+    if iq_qc[13]=='Fail':
+        report.write('*fail, please manually check the heaters')
+    else:
+        report.write('pass')
+    
+    report.write('\n\nOQ Summary:')
+    report.write('\n         oq1: ')
+    if oq_qc[0]=='Fail':
+        report.write('*fail, manually check the lasers')
+    else:
+        report.write('pass')
+    report.write('\n         oq2: ')
+    if oq_qc[1]=='Fail':
+        report.write('*fail, please manually check the XYZ stage translation and the stage settings in the IDF')
+    else:
+        report.write('pass')
+    report.write('\n         oq3: ')
+    if oq_qc[2]=='Fail':
+        report.write('*fail, please rerun the camera calibration')
+    else:
+        report.write('pass')
+    report.write('\n         oq4: ')
+    if oq_qc[3]=='Fail':
+        report.write('*fail, please manually rerun the channel mapping calibration preferably with another bead slide')
+    else:
+        report.write('pass')
+    report.write('\n         oq5: ')
+    if oq_qc[4]=='Fail':
+        report.write('*fail, please manually check the TIRF angle preferably with another bead slide')
+    else:
+        report.write('pass')
+    report.write('\n         oq6: ')
+    if oq_qc[5]=='Fail':
+        report.write('*fail, please manually check the z-lock preferably with another bead slide')
+    else:
+        report.write('pass')
+    report.write('\n         oq7: tbd, please manually use the Line Histogram function to measure the dSTORM resolution from the acquired images')
+    report.write('\n         oq8: ')
+    if oq_qc[7]=='Fail':
+        report.write('*fail, please manually check the temperature curves and rerun the thermistor calibration')
+    else:
+        report.write('pass')
+    report.write('\n         oq9: tbd, please manually use the Trace function to measure the drift from the acquired images')
+        
+    report.write('\n\nOnce additional manual-inspection is carried out, please complete the copy of the FLD-00010 IQ/OQ report')
+    report.close()
     
     
 if __name__ == "__main__":
@@ -1230,19 +1869,22 @@ if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='automated quality control') # add arguments and parse it to an object
     parser.add_argument('--purpose',metavar='PM/IQOQ/FIQA',default='PM',help='the purpose of the quality control (not case sensitive)')
     parser.add_argument('--user',metavar='xxxx',default='Jack',help='the tester')
-    parser.add_argument('--outpath',metavar='xx',default='QC',help='relative output diretory, padded with date')
-    parser.add_argument('--temperature',type=int,default=35,help='the target temperature in celsius')
-    parser.add_argument('--wait',action='store_false',help='flag for waiting temperature control')
+    parser.add_argument('--temperature',type=int,default=31,help='the target temperature in celsius')
+    parser.add_argument('--wait',type=int,help='wait time for temperature control in second')
+    parser.add_argument('--split',type=int,help='channel split, either 560 or 640')
     args=parser.parse_args()
     
-    purpose=args.purpose
-    user=args.user
-    outpath=args.outpath
-    target_temperature=args.temperature
-    flag_temperature=args.wait
+    purpose=args.purpose # read purpose
+    user=args.user # read user
+    outpath=purpose.upper() # read output folder
+    target_temperature=args.temperature # read target temperature
+    if args.wait!=None:
+        temperature_wait_time=args.wait # read waiting time if provided
+    if args.split!=None:
+        channel_split=args.split # read channel split if provided
     
-    try:
-        camera.NumberOfFramesWaitingInBuffer() # this function is only available in the development mode
+    try: # check if in development build
+        camera.NumberOfFramesWaitingInBuffer() # this function is only available in the development build
     except NameError:
         print('[WARNING] please start NimOS in the development build')
         report.write('please start NimOS in the development build (--development-build)')
@@ -1261,9 +1903,11 @@ if __name__ == "__main__":
         if purpose.lower()=='pm':
             pm_main()
             done=True
+            pm_analysis()
         elif purpose.lower()=='iqoq':
             iqoq_main()
-            done=False
+            done=True
+            iqoq_analysis()
         elif purpose.lower()=='fiqa':
             print('[WARNING] currently do not support automated FIQA, please contact CX.Jack for more information')
         else:
@@ -1271,10 +1915,9 @@ if __name__ == "__main__":
     
     if done:
         if not result:
-            print('QC FAILED, please check the final report for more details')
+            print(purpose.upper()+' FAILED, please check the final report for more details')
         else:
-            print('QC PASSED, please go and have fun :D')
-        pm_analysis()
+            print(purpose.upper()+' PASSED, please go and have fun :D')
         
     # import NimSetup
     # NimYSetup.cleanup()
