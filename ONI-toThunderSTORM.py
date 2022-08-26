@@ -58,9 +58,10 @@ def check(df):
                           'please check the export options in NimOS Settings>User Settings>Export Options>Positions (nm)')
         
             
-def convert_chunk(filename,output,dlist,total,copy=False,pixel=False,chunk=10000000,quiet=False,drop=None):
+def convert_chunk(filename,output,dlist,total,copy=False,pixel=False,chunk=10000000,quiet=False,drop=None,split=False):
     f=open(filename)
     count=0 # initial iterator
+    channel=[0,0,0,0,0,0] # initial flag for channel header
     psize=0 # initial pixel size
     if not quiet: # print process
         print('\n        dataframe read from {}'.format(f.name))
@@ -73,11 +74,13 @@ def convert_chunk(filename,output,dlist,total,copy=False,pixel=False,chunk=10000
         if not copy: # drop some columns to compress
             for i in dlist:
                 c=c.drop(columns=i,errors='ignore')
-        if drop!=None: # drop channel
-            c=c.drop(c[(c['Channel']==drop)].index,errors='ignore')
                 
         if count==0:
             psize=c.at[0,'X (nm)']/c.at[0,'X (pix)'] # calculate the pixel size in nanometer
+            
+        if drop!=None: # drop channel
+            c=c.drop(c[(c['Channel']==drop)].index,errors='ignore')
+            
         c=c.rename(columns={'Channel':'channel','Frame':'frame','Photons':'intensity [photon]','Background':'background [photon]'})
         if not pixel: # diplay in nanometers
             c['sigma [nm]']=(c['PSF Sigma X (pix)']+c['PSF Sigma Y (pix)'])/2*psize # average sigmas along XY 
@@ -87,11 +90,23 @@ def convert_chunk(filename,output,dlist,total,copy=False,pixel=False,chunk=10000
             c['sigma [px]']=(c['PSF Sigma X (pix)']+c['PSF Sigma Y (pix)'])/2 # average sigmas along XY
             c=c.rename(columns={'X (pix)':'x [px]','Y (pix)':'y [px]','Z (pix)':'z [px]','X precision (pix)':'x precision [px]','Y precision (pix)':'y precision [px]','PSF Sigma X (pix)':'sigma x [px]','PSF Sigma Y (pix)':'sigma y [px]'},errors='ignore')
             c=c.drop(columns=['X (nm)','Y (nm)','Z (nm)','X precision (nm)','Y precision (nm)'],errors='ignore')
-    
-        if count==0: # direct write with header
-            c.to_csv(output,index=False)
-        else: # append with no header
-            c.to_csv(output,index=False,mode='a',header=False)
+        
+        if not split: # merge channels
+            if count==0: # first time, write with header
+                c.to_csv(output,index=False)
+            else: # append without header
+                c.to_csv(output,index=False,mode='a',header=False)
+        else: # split channels
+            clist=(c[~c.duplicated('channel')])['channel'].values # get channel list
+            group=c.groupby(c['channel'])
+            for i in range(len(clist)):
+                if channel[clist[i]]==0: # first time, write with header
+                    tmp=group.get_group(clist[i]) # get channel information from data
+                    tmp.to_csv(output[:output.index('thunderstorm')]+'C'+str(clist[i])+'_'+output[output.index('thunderstorm'):],index=False)
+                    channel[clist[i]]=1
+                else: # append without header
+                    tmp=group.get_group(clist[i]) # get channel information from data
+                    tmp.to_csv(output[:output.index('thunderstorm')]+'C'+str(clist[i])+'_'+output[output.index('thunderstorm'):],index=False,mode='a',header=False)
         count=count+1
         
     f.close()
@@ -99,7 +114,7 @@ def convert_chunk(filename,output,dlist,total,copy=False,pixel=False,chunk=10000
         print('\n        dataframe saved to {}'.format(f.name))
     
     
-def convert_bulk(filename,output,dlist,copy=False,pixel=False,quiet=False,drop=None):
+def convert_bulk(filename,output,dlist,copy=False,pixel=False,quiet=False,drop=None,split=False):
     f=open(filename)
     df=pd.read_csv(f,delimiter=',') # read CSV as DataFrame
     f.close()
@@ -111,10 +126,12 @@ def convert_bulk(filename,output,dlist,copy=False,pixel=False,quiet=False,drop=N
     if not copy: # drop some columns to compress
         for i in dlist:
             df=df.drop(columns=i,errors='ignore')
+    
+    psize=df.at[0,'X (nm)']/df.at[0,'X (pix)'] # calculate the pixel size in nanometer
+    
     if drop!=None: # drop channel
         df=df.drop(df[(df['Channel']==drop)].index,errors='ignore')
     
-    psize=df.at[0,'X (nm)']/df.at[0,'X (pix)'] # calculate the pixel size in nanometer
     df=df.rename(columns={'Channel':'channel','Frame':'frame','Photons':'intensity [photon]','Background':'background [photon]'})
     if not pixel: # diplay in nanometers
         df['sigma [nm]']=(df['PSF Sigma X (pix)']+df['PSF Sigma Y (pix)'])/2*psize # average sigmas along XY 
@@ -125,7 +142,14 @@ def convert_bulk(filename,output,dlist,copy=False,pixel=False,quiet=False,drop=N
         df=df.rename(columns={'X (pix)':'x [px]','Y (pix)':'y [px]','Z (pix)':'z [px]','X precision (pix)':'x precision [px]','Y precision (pix)':'y precision [px]','PSF Sigma X (pix)':'sigma x [px]','PSF Sigma Y (pix)':'sigma y [px]'},errors='ignore')
         df=df.drop(columns=['X (nm)','Y (nm)','Z (nm)','X precision (nm)','Y precision (nm)'],errors='ignore')
     
-    df.to_csv(output,index=False)
+    if not split: # merge channels
+        df.to_csv(output,index=False)
+    else: # split channels
+        clist=(df[~df.duplicated('channel')])['channel'].values # get channel list
+        group=df.groupby(df['channel'])
+        for i in range(len(clist)):
+            tmp=group.get_group(clist[i]) # get channel information from data
+            tmp.to_csv(output[:output.index('thunderstorm')]+'C'+str(clist[i])+'_'+output[output.index('thunderstorm'):],index=False)
     
     if not quiet:
         print('\n        dataframe saved to {}'.format(f.name))
@@ -142,6 +166,7 @@ if __name__=="__main__":
     parser.add_argument('--pixel',action='store_true',help='use pixels for display rather than nanometers')
     parser.add_argument('--quiet',action='store_true',help='flag for console printing')
     parser.add_argument('--filter',type=int,metavar='[1,4]',help='filter out channel')
+    parser.add_argument('--channel',action='store_true',help='flag for splitting channels')
     
     args=parser.parse_args()
           
@@ -157,6 +182,7 @@ if __name__=="__main__":
     dlist=('X raw (pix)','Y raw (pix)','Z raw (pix)','Sigma X var','Sigma Y var','CRLB Intensity','CRLB Background','p-value','Z out of range flag')
     p=args.pixel # default to False: represent in nanometers
     d=args.filter # drop channel
+    s=args.channel # split channel
     
     (_,_,files)=next(os.walk(indir)) # scan all included files
     csv=[i for i in files if '.csv' in i.lower()] # get all included csvs
@@ -177,10 +203,10 @@ if __name__=="__main__":
         s=os.path.getsize(f)/1024/1024/1024 # read CSV size in GB
         if s>=m: # convert in chunks
             print('\n    processing CSV #'+str(i+1)+'/'+str(numF)+' in chunks:')
-            convert_chunk(f,o,dlist,int(np.ceil(s/m)),c,p,b,q,d)
+            convert_chunk(f,o,dlist,int(np.ceil(s/m)),c,p,b,q,d,s)
         else: # convert in bulk
             print('\n    processing CSV #'+str(i+1)+'/'+str(numF)+' in bulk:')
-            convert_bulk(f,o,dlist,c,p,q,d)
+            convert_bulk(f,o,dlist,c,p,q,d,s)
         
     end=time.time()
     print('\nEnd Batch Processing')
