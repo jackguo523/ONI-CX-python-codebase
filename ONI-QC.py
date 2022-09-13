@@ -51,7 +51,6 @@ iq_qc=['TBD']*14
 oq_qc=['TBD']*9
 date=str(datetime.date.today()).replace('-','')
 outfile='C:/Users/ONI/Desktop/'+date+'_QC_report.txt'
-report=open(outfile,'w')
 abspath='' # absolute output directory
 
 
@@ -741,6 +740,13 @@ def pm_qc150(ex=100):
     _wait()
     
     report.write('\nparameter: exposure time = '+str(ex)+'ms')
+    report.write('\n           light program = 3 steps with 24 frames')
+    report.write('\n           step #1: ')
+    report.write('\n                    ['+str((int(light[0].Wavelength)))+' (100%), '+str((int(light[1].Wavelength)))+' (100%), '+str((int(light[2].Wavelength)))+ ' (100%), '+str((int(light[3].Wavelength)))+' (100%)] repeat 2 times')
+    report.write('\n           step #2: ')
+    report.write('\n                    [] repeat 8 times')
+    report.write('\n           step #3: ')
+    report.write('\n                    ['+str((int(light[1].Wavelength)))+' (50%), '+str((int(light[1].Wavelength)))+' (100%), '+str((int(light[3].Wavelength)))+ ' (50%), '+str((int(light[3].Wavelength)))+' (100%)] repeat 2 times')
     report.write('\nhint: light program frames saved as light-program.tif')
     report.write('\n      please check the light program frames')
     
@@ -1460,7 +1466,6 @@ def pm_analysis():
         report.write('pass')
         
     report.write('\n\nOnce additional manual-inspection is carried out, please complete the copy of the FLD-00009 maintenance report')
-    report.close()
     
         
 def iqoq_main():
@@ -1861,7 +1866,6 @@ def iqoq_analysis():
     report.write('\n         oq9: tbd, please manually use the Trace function to measure the drift from the acquired images')
         
     report.write('\n\nOnce additional manual-inspection is carried out, please complete the copy of the FLD-00010 IQ/OQ report')
-    report.close()
     
     
 if __name__ == "__main__":
@@ -1869,9 +1873,9 @@ if __name__ == "__main__":
     parser=argparse.ArgumentParser(description='automated quality control') # add arguments and parse it to an object
     parser.add_argument('--purpose',metavar='PM/IQOQ/FIQA',default='PM',help='the purpose of the quality control (not case sensitive)')
     parser.add_argument('--user',metavar='xxxx',default='Jack',help='the tester')
-    parser.add_argument('--temperature',type=int,default=31,help='the target temperature in celsius')
-    parser.add_argument('--wait',type=int,help='wait time for temperature control in second')
-    parser.add_argument('--split',type=int,help='channel split, either 560 or 640')
+    parser.add_argument('--temperature',metavar='xx',type=int,default=31,help='the target temperature in celsius')
+    parser.add_argument('--wait',metavar='xxxx',type=int,help='wait time for temperature control in second')
+    parser.add_argument('--split',metavar='xxx',type=int,help='channel split, either 560 or 640')
     args=parser.parse_args()
     
     purpose=args.purpose # read purpose
@@ -1900,6 +1904,7 @@ if __name__ == "__main__":
     else:
         print('The focus reference has been set')
         print('AUTOMATED '+purpose.upper()+' STARTS...')
+        report=open(outfile,'w')
         if purpose.lower()=='pm':
             pm_main()
             done=True
@@ -1912,6 +1917,7 @@ if __name__ == "__main__":
             print('[WARNING] currently do not support automated FIQA, please contact CX.Jack for more information')
         else:
             print('[ERROR] no such a purpose')
+        report.close()
     
     if done:
         if not result:
