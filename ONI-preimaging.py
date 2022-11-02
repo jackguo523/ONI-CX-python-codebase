@@ -94,7 +94,7 @@ def fine_focus(focus,limit=20,step=0.1,channel=0,laser=30):
     light[2].Enabled=False
     
     
-def channel_mapping(l1=2,l2=3,p1=30,p2=20,count=5,fov=20,point=2000,distance=5.0,radius=10.0,optimal=True):
+def channel_mapping(l1=2,l2=3,p1=30,p2=20,count=10,fov=20,point=2000,distance=5.0,radius=10.0,optimal=True):
     light.GlobalOnState=True
     light[l1].Enabled=True
     light[l2].Enabled=True
@@ -122,12 +122,11 @@ def channel_mapping(l1=2,l2=3,p1=30,p2=20,count=5,fov=20,point=2000,distance=5.0
             
 
 def auto_tirf(channel=0,l=2,p=30,start=45,end=57,step=0.5):
+    time.sleep(2)
     light.GlobalOnState=True
     light[l].Enabled=True
     light[l].PercentPower=p
     camera.BeginView()
-    
-    time.sleep(5)
     
     V=[]
     for i in np.arange(start,end,step):
@@ -157,7 +156,6 @@ start=time.time()
 channel_mapping()
 end=time.time()
 print('channel mapping calibration runtime: '+str(end-start)+'s')
-
 
 start=time.time()
 auto_tirf()

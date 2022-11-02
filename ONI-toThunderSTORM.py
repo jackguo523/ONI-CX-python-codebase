@@ -46,6 +46,39 @@ import numpy as np
         
 #         if not quiet:
 #             print('\n    data saved to {}'.format(f.name))
+
+
+def single_filter(infile,outfile,keyword,threshold,rule='higher'): # rule can be 'higher' or 'lower'
+    print('Start!')
+    f=open(infile)
+    df=pd.read_csv(f,delimiter=',')
+    sub_df=[c for c in df.columns if keyword in c]
+    for i in range(len(sub_df)):
+        if rule=='higher': # filter out larger values
+            df=df[df[sub_df[i]]<=threshold]
+        else: # filter out smaller values
+            df=df[df[sub_df[i]]>=threshold]
+    df.to_csv(outfile,index=False)
+    print('Done!')
+
+def batch_filter(inpath,keyword,threshold,rule='higher'):
+    print('Start batch filtering based on keyword '+keyword+'!')
+    _,_,files=next(os.walk(inpath))
+    files=[i for i in files if 'f_' not in i.lower()] # remove previous filtering results
+    paths=[inpath+'/'+i for i in files]
+    # print(paths)
+    for f in range(len(paths)):
+        file=open(paths[f])
+        df=pd.read_csv(file,delimiter=',')
+        sub_df=[c for c in df.columns if keyword in c]
+        for i in range(len(sub_df)):
+            if rule=='higher': # filter out larger values
+                df=df[df[sub_df[i]]<=threshold]
+            else: # filter out smaller values
+                df=df[df[sub_df[i]]>=threshold]
+        df.to_csv(inpath+'/f_'+files[f],index=False)
+    print('Done batch filtering based on keyword '+keyword+'!')
+
 def check(df):
     if 'X (pix)' not in df.dtypes:
         raise ValueError('Colume X (pix) or Y (pix) not found in current CSV, '
@@ -200,8 +233,8 @@ if __name__=="__main__":
         f=indir+'/'+csv[i] # update absolute path
         o=outdir+'/thunderstorm_'+csv[i] # create output csv name
         
-        s=os.path.getsize(f)/1024/1024/1024 # read CSV size in GB
-        if s>=m: # convert in chunks
+        size=os.path.getsize(f)/1024/1024/1024 # read CSV size in GB
+        if size>=m: # convert in chunks
             print('\n    processing CSV #'+str(i+1)+'/'+str(numF)+' in chunks:')
             convert_chunk(f,o,dlist,int(np.ceil(s/m)),c,p,b,q,d,s)
         else: # convert in bulk
